@@ -16,16 +16,18 @@ public class FileMetadata {
     private int nodePort;
     private String status;
     private String mode;
+    private String userEmail;
     private LocalDateTime uploadTime;
 
     public FileMetadata() {
     }
 
-    public FileMetadata(String fileName, int nodePort, String status, String mode) {
+    public FileMetadata(String fileName, int nodePort, String status, String mode, String userEmail) {
         this.fileName = fileName;
         this.nodePort = nodePort;
         this.status = status;
         this.mode = mode;
+        this.userEmail = userEmail;
         this.uploadTime = LocalDateTime.now();
     }
 
@@ -47,6 +49,10 @@ public class FileMetadata {
 
     public String getMode() {
         return mode;
+    }
+
+    public String getUserEmail() {
+        return userEmail;
     }
 
     public LocalDateTime getUploadTime() {
@@ -71,6 +77,10 @@ public class FileMetadata {
 
     public void setMode(String mode) {
         this.mode = mode;
+    }
+
+    public void setUserEmail(String userEmail) {
+        this.userEmail = userEmail;
     }
 
     public void setUploadTime(LocalDateTime uploadTime) {

@@ -5,11 +5,12 @@ import com.nidhi.distributedstorage.repository.FileMetadataRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -38,7 +39,7 @@ public class MasterController {
 
     @GetMapping("/test")
     public String test() {
-        return "Master Node Running!";
+        return "Master is running";
     }
 
     @GetMapping("/modes")
@@ -49,27 +50,33 @@ public class MasterController {
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "mode", defaultValue = "replication") String mode
+            @RequestParam(value = "mode", defaultValue = "replication") String mode,
+            Authentication authentication
     ) {
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not authenticated");
+        }
+
         if (file == null || file.isEmpty()) {
             return ResponseEntity.badRequest().body("Upload failed: file is empty");
         }
 
         String normalizedMode = mode.trim().toLowerCase();
-
         if (!normalizedMode.equals("replication") && !normalizedMode.equals("load_balancing")) {
             return ResponseEntity.badRequest()
                     .body("Invalid mode. Use 'replication' or 'load_balancing'");
         }
 
+        String userEmail = authentication.getName();
+
         if (normalizedMode.equals("replication")) {
-            return uploadWithReplication(file);
+            return uploadWithReplication(file, userEmail);
         } else {
-            return uploadWithLoadBalancing(file);
+            return uploadWithLoadBalancing(file, userEmail);
         }
     }
 
-    private ResponseEntity<String> uploadWithReplication(MultipartFile file) {
+    private ResponseEntity<String> uploadWithReplication(MultipartFile file, String userEmail) {
         RestTemplate restTemplate = new RestTemplate();
         StringBuilder result = new StringBuilder();
 
@@ -83,7 +90,7 @@ public class MasterController {
 
                 if (!"OK".equals(healthResponse.getBody())) {
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "NOT_HEALTHY", "replication")
+                            new FileMetadata(file.getOriginalFilename(), port, "NOT_HEALTHY", "replication", userEmail)
                     );
                     result.append("Node ").append(port).append(" not healthy\n");
                     continue;
@@ -109,13 +116,13 @@ public class MasterController {
                         && responseBody.startsWith("Uploaded:")) {
 
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "UPLOADED", "replication")
+                            new FileMetadata(file.getOriginalFilename(), port, "UPLOADED", "replication", userEmail)
                     );
 
                     result.append("Replicated to node ").append(port).append("\n");
                 } else {
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "FAILED", "replication")
+                            new FileMetadata(file.getOriginalFilename(), port, "FAILED", "replication", userEmail)
                     );
                     result.append("Upload failed on node ").append(port)
                             .append(": ").append(responseBody).append("\n");
@@ -123,7 +130,7 @@ public class MasterController {
 
             } catch (Exception e) {
                 fileMetadataRepository.save(
-                        new FileMetadata(file.getOriginalFilename(), port, "FAILED", "replication")
+                        new FileMetadata(file.getOriginalFilename(), port, "FAILED", "replication", userEmail)
                 );
                 result.append("Upload exception on node ").append(port)
                         .append(": ").append(e.getMessage()).append("\n");
@@ -133,7 +140,7 @@ public class MasterController {
         return ResponseEntity.ok(result.toString());
     }
 
-    private ResponseEntity<String> uploadWithLoadBalancing(MultipartFile file) {
+    private ResponseEntity<String> uploadWithLoadBalancing(MultipartFile file, String userEmail) {
         RestTemplate restTemplate = new RestTemplate();
 
         int attempts = 0;
@@ -152,7 +159,7 @@ public class MasterController {
 
                 if (!"OK".equals(healthResponse.getBody())) {
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "NOT_HEALTHY", "load_balancing")
+                            new FileMetadata(file.getOriginalFilename(), port, "NOT_HEALTHY", "load_balancing", userEmail)
                     );
                     attempts++;
                     continue;
@@ -178,19 +185,19 @@ public class MasterController {
                         && responseBody.startsWith("Uploaded:")) {
 
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "UPLOADED", "load_balancing")
+                            new FileMetadata(file.getOriginalFilename(), port, "UPLOADED", "load_balancing", userEmail)
                     );
 
                     return ResponseEntity.ok("Load-balanced upload to node " + port);
                 } else {
                     fileMetadataRepository.save(
-                            new FileMetadata(file.getOriginalFilename(), port, "FAILED", "load_balancing")
+                            new FileMetadata(file.getOriginalFilename(), port, "FAILED", "load_balancing", userEmail)
                     );
                 }
 
             } catch (Exception e) {
                 fileMetadataRepository.save(
-                        new FileMetadata(file.getOriginalFilename(), port, "FAILED", "load_balancing")
+                        new FileMetadata(file.getOriginalFilename(), port, "FAILED", "load_balancing", userEmail)
                 );
             }
 
@@ -206,23 +213,40 @@ public class MasterController {
         return fileMetadataRepository.findAll();
     }
 
+    @GetMapping("/files/my")
+    public ResponseEntity<List<FileMetadata>> getMyFiles(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        String userEmail = authentication.getName();
+        return ResponseEntity.ok(fileMetadataRepository.findByUserEmail(userEmail));
+    }
+
     @DeleteMapping("/delete/{filename}")
-    public ResponseEntity<String> deleteFromAllNodes(@PathVariable String filename) {
+    public ResponseEntity<String> deleteFromAllNodes(@PathVariable String filename, Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not authenticated");
+        }
+
         RestTemplate restTemplate = new RestTemplate();
         StringBuilder result = new StringBuilder();
 
         try {
-            List<FileMetadata> metadataList =
-                    fileMetadataRepository.findByFileNameAndStatus(filename, "UPLOADED");
+            String userEmail = authentication.getName();
 
-            if (metadataList.isEmpty()) {
+            List<FileMetadata> matchingFiles = fileMetadataRepository.findByUserEmail(userEmail).stream()
+                    .filter(f -> filename.equals(f.getFileName()) && "UPLOADED".equals(f.getStatus()))
+                    .toList();
+
+            if (matchingFiles.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("No uploaded metadata found for file: " + filename);
             }
 
             List<Integer> deletedPorts = new ArrayList<>();
 
-            for (FileMetadata metadata : metadataList) {
+            for (FileMetadata metadata : matchingFiles) {
                 int port = metadata.getNodePort();
 
                 if (deletedPorts.contains(port)) {
@@ -255,7 +279,12 @@ public class MasterController {
                 }
             }
 
-            fileMetadataRepository.deleteByFileName(filename);
+            List<FileMetadata> allUserFiles = fileMetadataRepository.findByUserEmail(userEmail);
+            for (FileMetadata fileMetadata : allUserFiles) {
+                if (filename.equals(fileMetadata.getFileName())) {
+                    fileMetadataRepository.deleteById(fileMetadata.getId());
+                }
+            }
 
             result.append("Deleted metadata from database for file: ").append(filename);
             return ResponseEntity.ok(result.toString());
@@ -267,11 +296,20 @@ public class MasterController {
     }
 
     @GetMapping("/download/{filename}")
-    public ResponseEntity<ByteArrayResource> downloadFromAvailableNode(@PathVariable String filename) {
-        RestTemplate restTemplate = new RestTemplate();
+    public ResponseEntity<ByteArrayResource> downloadFromAvailableNode(
+            @PathVariable String filename,
+            Authentication authentication
+    ) {
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
-        List<FileMetadata> metadataList =
-                fileMetadataRepository.findByFileNameAndStatus(filename, "UPLOADED");
+        RestTemplate restTemplate = new RestTemplate();
+        String userEmail = authentication.getName();
+
+        List<FileMetadata> metadataList = fileMetadataRepository.findByUserEmail(userEmail).stream()
+                .filter(f -> filename.equals(f.getFileName()) && "UPLOADED".equals(f.getStatus()))
+                .toList();
 
         if (metadataList.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();

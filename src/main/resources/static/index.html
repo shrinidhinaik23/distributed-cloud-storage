@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed Storage Dashboard</title>
+    <title>SyncDrive Dashboard</title>
     <style>
         * {
             box-sizing: border-box;
@@ -23,7 +23,7 @@
 
         .container {
             width: 95%;
-            max-width: 1150px;
+            max-width: 1200px;
             margin: 0 auto 40px;
         }
 
@@ -49,6 +49,8 @@
 
         input[type="file"],
         input[type="text"],
+        input[type="email"],
+        input[type="password"],
         select {
             width: 100%;
             padding: 10px;
@@ -89,6 +91,14 @@
 
         .danger-btn:hover {
             background: #b52a37;
+        }
+
+        .success-btn {
+            background: #28a745;
+        }
+
+        .success-btn:hover {
+            background: #1f7f35;
         }
 
         .result-box {
@@ -193,13 +203,49 @@
             font-size: 13px;
             color: #666;
         }
+
+        .status-bar {
+            background: #111827;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-<h1>📦 Distributed Storage System Dashboard</h1>
+<div class="status-bar" id="authStatus">
+    Not logged in
+</div>
+
+<h1>📦 SyncDrive Dashboard</h1>
 
 <div class="container">
+
+    <div class="grid">
+        <div class="box">
+            <h2>Register</h2>
+            <input type="text" id="registerName" placeholder="Enter name">
+            <input type="email" id="registerEmail" placeholder="Enter email">
+            <input type="password" id="registerPassword" placeholder="Enter password">
+            <button class="success-btn" onclick="registerUser()">Register</button>
+            <div id="registerResult" class="result-box">No registration attempted yet.</div>
+        </div>
+
+        <div class="box">
+            <h2>Login</h2>
+            <input type="email" id="loginEmail" placeholder="Enter email">
+            <input type="password" id="loginPassword" placeholder="Enter password">
+            <button onclick="loginUser()">Login</button>
+            <button class="secondary-btn" onclick="logoutUser()">Logout</button>
+            <div id="loginResult" class="result-box">No login attempted yet.</div>
+        </div>
+    </div>
 
     <div class="grid">
         <div class="box">
@@ -219,9 +265,9 @@
             </div>
 
             <button onclick="uploadFile()">Upload</button>
-            <button class="secondary-btn" onclick="loadMetadata()">Refresh Metadata</button>
+            <button class="secondary-btn" onclick="loadMyFiles()">Refresh My Files</button>
 
-            <div id="uploadResult" class="result-box">No action yet.</div>
+            <div id="uploadResult" class="result-box">No upload attempted yet.</div>
         </div>
 
         <div class="box">
@@ -231,7 +277,7 @@
             <button onclick="downloadFile()">Download from Master</button>
 
             <div class="note">
-                This uses the master node to find an available storage node.
+                Download uses your login token and searches available nodes.
             </div>
 
             <div id="downloadResult" class="result-box">No download attempted yet.</div>
@@ -246,7 +292,7 @@
             <button class="danger-btn" onclick="deleteFile()">Delete from Master</button>
 
             <div class="note">
-                This deletes the file from all nodes where it exists and removes metadata from MySQL.
+                Deletes from all nodes where your file exists and removes DB metadata.
             </div>
 
             <div id="deleteResult" class="result-box">No delete attempted yet.</div>
@@ -254,7 +300,7 @@
 
         <div class="box">
             <h2>Quick Stats</h2>
-            <div id="statsBox" class="result-box">Loading stats...</div>
+            <div id="statsBox" class="result-box">Login and load files to see stats.</div>
         </div>
     </div>
 
@@ -274,13 +320,13 @@
 
     <div class="box" style="margin-top: 20px;">
         <div class="top-actions">
-            <h2 style="display:inline-block; margin:0;">Metadata</h2>
-            <button style="float:right;" onclick="loadMetadata()">Refresh</button>
+            <h2 style="display:inline-block; margin:0;">My Files</h2>
+            <button style="float:right;" onclick="loadMyFiles()">Refresh</button>
         </div>
         <div style="clear: both;"></div>
 
         <div class="table-wrapper">
-            <table id="metadataTable">
+            <table>
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -288,12 +334,13 @@
                         <th>Node Port</th>
                         <th>Status</th>
                         <th>Mode</th>
+                        <th>User</th>
                         <th>Upload Time</th>
                     </tr>
                 </thead>
-                <tbody id="metadataBody">
+                <tbody id="myFilesBody">
                     <tr>
-                        <td colspan="6" class="small">No metadata loaded yet.</td>
+                        <td colspan="7" class="small">Login to view your files.</td>
                     </tr>
                 </tbody>
             </table>
@@ -303,20 +350,140 @@
 </div>
 
 <script>
-    const MASTER_BASE_URL = "http://localhost:9090/master";
+    const MASTER_BASE_URL = "http://localhost:9090";
     const STORAGE_NODES = [
         { port: 8080, healthUrl: "http://localhost:8080/storage/health" },
         { port: 8081, healthUrl: "http://localhost:8081/storage/health" },
         { port: 8082, healthUrl: "http://localhost:8082/storage/health" }
     ];
 
-    function uploadFile() {
-    const file = document.getElementById("fileInput").files[0];
-    const mode = document.getElementById("modeSelect").value;
-    const uploadResult = document.getElementById("uploadResult");
+    function getToken() {
+        return localStorage.getItem("token");
+    }
+
+    function getAuthHeaders(isJson = false) {
+        const token = getToken();
+        const headers = {};
+
+        if (token) {
+            headers["Authorization"] = "Bearer " + token;
+        }
+
+        if (isJson) {
+            headers["Content-Type"] = "application/json";
+        }
+
+        return headers;
+    }
+
+    function updateAuthStatus() {
+        const token = getToken();
+        const authStatus = document.getElementById("authStatus");
+
+        if (token) {
+            authStatus.innerText = "Logged in";
+        } else {
+            authStatus.innerText = "Not logged in";
+        }
+    }
+
+    async function registerUser() {
+        const name = document.getElementById("registerName").value.trim();
+        const email = document.getElementById("registerEmail").value.trim();
+        const password = document.getElementById("registerPassword").value.trim();
+        const registerResult = document.getElementById("registerResult");
+
+        if (!name || !email || !password) {
+            registerResult.innerText = "Please fill all register fields";
+            return;
+        }
+
+        try {
+            const response = await fetch(`${MASTER_BASE_URL}/auth/register`, {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({ name, email, password })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Registration failed");
+            }
+
+            if (data.token) {
+                localStorage.setItem("token", data.token);
+                updateAuthStatus();
+                loadMyFiles();
+            }
+
+            registerResult.innerText = data.message || "Registered successfully";
+        } catch (error) {
+            registerResult.innerText = "Registration failed: " + error.message;
+            console.error(error);
+        }
+    }
+
+    async function loginUser() {
+        const email = document.getElementById("loginEmail").value.trim();
+        const password = document.getElementById("loginPassword").value.trim();
+        const loginResult = document.getElementById("loginResult");
+
+        if (!email || !password) {
+            loginResult.innerText = "Please fill email and password";
+            return;
+        }
+
+        try {
+            const response = await fetch(`${MASTER_BASE_URL}/auth/login`, {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Login failed");
+            }
+
+            if (data.token) {
+                localStorage.setItem("token", data.token);
+                updateAuthStatus();
+                loadMyFiles();
+            }
+
+            loginResult.innerText = data.message || "Login successful";
+        } catch (error) {
+            loginResult.innerText = "Login failed: " + error.message;
+            console.error(error);
+        }
+    }
+
+    function logoutUser() {
+        localStorage.removeItem("token");
+        updateAuthStatus();
+        document.getElementById("myFilesBody").innerHTML = `
+            <tr>
+                <td colspan="7" class="small">Logged out. Login to view your files.</td>
+            </tr>
+        `;
+        document.getElementById("statsBox").innerText = "Login and load files to see stats.";
+        document.getElementById("loginResult").innerText = "Logged out successfully";
+    }
+
+    async function uploadFile() {
+        const file = document.getElementById("fileInput").files[0];
+        const mode = document.getElementById("modeSelect").value;
+        const uploadResult = document.getElementById("uploadResult");
+
+        if (!getToken()) {
+            uploadResult.innerText = "Please login first";
+            return;
+        }
 
         if (!file) {
-            alert("Please choose a file first");
+            uploadResult.innerText = "Please choose a file first";
             return;
         }
 
@@ -326,45 +493,57 @@
 
         uploadResult.innerText = "Uploading...";
 
-        fetch("http://localhost:9090/master/upload", {
-            method: "POST",
-            body: formData,
-            mode: "cors"   // ⭐ IMPORTANT FIX
-        })
-        .then(async res => {
-            const text = await res.text();
-            if (!res.ok) {
-                throw new Error(text);
+        try {
+            const response = await fetch(`${MASTER_BASE_URL}/master/upload`, {
+                method: "POST",
+                headers: getAuthHeaders(false),
+                body: formData
+            });
+
+            const text = await response.text();
+
+            if (!response.ok) {
+                throw new Error(text || "Upload failed");
             }
-            return text;
-        })
-        .then(data => {
-            uploadResult.innerText = data;
-            loadMetadata();
+
+            uploadResult.innerText = text;
+            loadMyFiles();
             loadNodeHealth();
-        })
-        .catch(err => {
-            uploadResult.innerText = "Upload failed: " + err;
-            console.error(err);
-        });
+        } catch (error) {
+            uploadResult.innerText = "Upload failed: " + error.message;
+            console.error(error);
+        }
     }
 
-    function loadMetadata() {
-        fetch(`${MASTER_BASE_URL}/metadata`)
-        .then(res => {
-            if (!res.ok) {
-                throw new Error("Could not fetch metadata");
+    async function loadMyFiles() {
+        const tbody = document.getElementById("myFilesBody");
+
+        if (!getToken()) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="small">Login to view your files.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        try {
+            const response = await fetch(`${MASTER_BASE_URL}/master/files/my`, {
+                method: "GET",
+                headers: getAuthHeaders(false)
+            });
+
+            if (!response.ok) {
+                throw new Error("Could not fetch your files");
             }
-            return res.json();
-        })
-        .then(data => {
-            const tbody = document.getElementById("metadataBody");
+
+            const data = await response.json();
             tbody.innerHTML = "";
 
             if (!data || data.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="small">No metadata found.</td>
+                        <td colspan="7" class="small">No files found for this user.</td>
                     </tr>
                 `;
                 updateStats([]);
@@ -383,6 +562,7 @@
                         <td>${item.nodePort ?? ""}</td>
                         <td><span class="badge ${statusClass}">${item.status ?? ""}</span></td>
                         <td><span class="badge badge-mode">${item.mode ?? "N/A"}</span></td>
+                        <td>${item.userEmail ?? ""}</td>
                         <td>${item.uploadTime ?? ""}</td>
                     </tr>
                 `;
@@ -390,16 +570,14 @@
             });
 
             updateStats(data);
-        })
-        .catch(err => {
-            const tbody = document.getElementById("metadataBody");
+        } catch (error) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6">Metadata fetch failed: ${err.message}</td>
+                    <td colspan="7">Fetch failed: ${error.message}</td>
                 </tr>
             `;
-            console.error(err);
-        });
+            console.error(error);
+        }
     }
 
     function loadNodeHealth() {
@@ -434,53 +612,86 @@
         const fileName = document.getElementById("downloadFileName").value.trim();
         const downloadResult = document.getElementById("downloadResult");
 
+        if (!getToken()) {
+            downloadResult.innerText = "Please login first";
+            return;
+        }
+
         if (!fileName) {
-            alert("Please enter a file name");
+            downloadResult.innerText = "Please enter a file name";
             return;
         }
 
         downloadResult.innerText = "Trying download...";
 
-        const link = document.createElement("a");
-        link.href = `${MASTER_BASE_URL}/download/${encodeURIComponent(fileName)}`;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const token = getToken();
+        const url = `${MASTER_BASE_URL}/master/download/${encodeURIComponent(fileName)}`;
 
-        downloadResult.innerText = `Download requested for: ${fileName}`;
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Authorization": "Bearer " + token
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Download failed");
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const blobUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(blobUrl);
+
+            downloadResult.innerText = `Downloaded: ${fileName}`;
+        })
+        .catch(error => {
+            downloadResult.innerText = "Download failed: " + error.message;
+            console.error(error);
+        });
     }
 
-    function deleteFile() {
+    async function deleteFile() {
         const fileName = document.getElementById("deleteFileName").value.trim();
         const deleteResult = document.getElementById("deleteResult");
 
+        if (!getToken()) {
+            deleteResult.innerText = "Please login first";
+            return;
+        }
+
         if (!fileName) {
-            alert("Please enter a file name");
+            deleteResult.innerText = "Please enter a file name";
             return;
         }
 
         deleteResult.innerText = "Deleting...";
 
-        fetch(`${MASTER_BASE_URL}/delete/${encodeURIComponent(fileName)}`, {
-            method: "DELETE"
-        })
-        .then(async res => {
-            const text = await res.text();
-            if (!res.ok) {
+        try {
+            const response = await fetch(`${MASTER_BASE_URL}/master/delete/${encodeURIComponent(fileName)}`, {
+                method: "DELETE",
+                headers: getAuthHeaders(false)
+            });
+
+            const text = await response.text();
+
+            if (!response.ok) {
                 throw new Error(text || "Delete failed");
             }
-            return text;
-        })
-        .then(data => {
-            deleteResult.innerText = data;
-            loadMetadata();
+
+            deleteResult.innerText = text;
+            loadMyFiles();
             loadNodeHealth();
-        })
-        .catch(err => {
-            deleteResult.innerText = "Delete failed: " + err.message;
-            console.error(err);
-        });
+        } catch (error) {
+            deleteResult.innerText = "Delete failed: " + error.message;
+            console.error(error);
+        }
     }
 
     function updateStats(data) {
@@ -499,8 +710,11 @@
         `;
     }
 
-    loadMetadata();
+    updateAuthStatus();
     loadNodeHealth();
+    if (getToken()) {
+        loadMyFiles();
+    }
 </script>
 
 </body>

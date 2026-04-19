@@ -1,69 +1,37 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { LogIn, UserPlus, User, Lock, Mail } from "lucide-react";
 import api from "../services/api";
 
-export default function AuthPanel({ onAuthChange }) {
+export default function AuthPanel({ onLogin }) {
   const [mode, setMode] = useState("login");
-  const [registerForm, setRegisterForm] = useState({
-    name: "",
-    email: "",
+  const [form, setForm] = useState({
+    username: "",
     password: "",
-  });
-  const [loginForm, setLoginForm] = useState({
     email: "",
-    password: "",
   });
-  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [currentUser, setCurrentUser] = useState("");
+  const [message, setMessage] = useState("");
 
-  const token = localStorage.getItem("token");
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (!token) {
-        setCurrentUser("");
-        onAuthChange("");
-        return;
-      }
-
-      try {
-        const res = await api.get("/user/me");
-        const text = typeof res.data === "string" ? res.data : "";
-        const email = text.replace("Logged in as: ", "");
-        setCurrentUser(email);
-        onAuthChange(email);
-      } catch {
-        localStorage.removeItem("token");
-        setCurrentUser("");
-        onAuthChange("");
-      }
-    };
-
-    fetchUser();
-  }, [token, onAuthChange]);
+  const handleChange = (e) => {
+    setForm((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
 
   const handleRegister = async () => {
-    if (!registerForm.name || !registerForm.email || !registerForm.password) {
-      setMessage("Please fill all fields");
-      return;
-    }
-
     try {
       setLoading(true);
       setMessage("");
 
-      const res = await api.post("/auth/register", registerForm);
+      await api.post("/auth/register", {
+        username: form.username,
+        email: form.email,
+        password: form.password,
+      });
 
-      if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
-      }
-
-      setMessage(res.data.message || "Registered successfully");
-
-      const me = await api.get("/user/me");
-      const email = String(me.data).replace("Logged in as: ", "");
-      setCurrentUser(email);
-      onAuthChange(email);
+      setMessage("Registration successful. Please login with email.");
+      setMode("login");
     } catch (error) {
       setMessage(
         error?.response?.data?.message ||
@@ -76,27 +44,24 @@ export default function AuthPanel({ onAuthChange }) {
   };
 
   const handleLogin = async () => {
-    if (!loginForm.email || !loginForm.password) {
-      setMessage("Please fill email and password");
-      return;
-    }
-
     try {
       setLoading(true);
       setMessage("");
 
-      const res = await api.post("/auth/login", loginForm);
+      const response = await api.post("/auth/login", {
+        email: form.email,
+        password: form.password,
+      });
 
-      if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
+      const token = response.data?.token;
+      if (!token) {
+        throw new Error("Token not received");
       }
 
-      setMessage(res.data.message || "Login successful");
+      localStorage.setItem("token", token);
 
       const me = await api.get("/user/me");
-      const email = String(me.data).replace("Logged in as: ", "");
-      setCurrentUser(email);
-      onAuthChange(email);
+      onLogin(me.data);
     } catch (error) {
       setMessage(
         error?.response?.data?.message ||
@@ -108,101 +73,98 @@ export default function AuthPanel({ onAuthChange }) {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    setCurrentUser("");
-    setMessage("Logged out successfully");
-    onAuthChange("");
+  const submit = (e) => {
+    e.preventDefault();
+    if (mode === "login") handleLogin();
+    else handleRegister();
   };
 
-  if (token && currentUser) {
-    return (
-      <div className="panel">
-        <h3>Account</h3>
-        <p className="muted">Logged in as</p>
-        <p className="strong-text">{currentUser}</p>
-        <button className="danger-btn" onClick={handleLogout}>
-          Logout
-        </button>
-        <p className="status-text">{message}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="panel">
-      <div className="tab-row">
-        <button
-          className={mode === "login" ? "tab-btn active-tab" : "tab-btn"}
-          onClick={() => setMode("login")}
-        >
-          Login
-        </button>
-        <button
-          className={mode === "register" ? "tab-btn active-tab" : "tab-btn"}
-          onClick={() => setMode("register")}
-        >
-          Register
-        </button>
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="auth-logo">DS</div>
+          <div>
+            <h1>Distributed Storage</h1>
+            <p>Secure file syncing across storage nodes</p>
+          </div>
+        </div>
+
+        <div className="auth-tabs">
+          <button
+            className={mode === "login" ? "active" : ""}
+            onClick={() => {
+              setMode("login");
+              setMessage("");
+            }}
+            type="button"
+          >
+            <LogIn size={16} />
+            Login
+          </button>
+          <button
+            className={mode === "register" ? "active" : ""}
+            onClick={() => {
+              setMode("register");
+              setMessage("");
+            }}
+            type="button"
+          >
+            <UserPlus size={16} />
+            Register
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="auth-form">
+          {mode === "register" && (
+            <label>
+              <User size={16} />
+              <input
+                type="text"
+                name="username"
+                placeholder="Username"
+                value={form.username}
+                onChange={handleChange}
+                required
+              />
+            </label>
+          )}
+
+          <label>
+            <Mail size={16} />
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={handleChange}
+              required
+            />
+          </label>
+
+          <label>
+            <Lock size={16} />
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={form.password}
+              onChange={handleChange}
+              required
+            />
+          </label>
+
+          <button className="primary-btn" type="submit" disabled={loading}>
+            {loading
+              ? "Please wait..."
+              : mode === "login"
+              ? "Login"
+              : "Create account"}
+          </button>
+
+          {message && <p className="auth-message">{message}</p>}
+        </form>
       </div>
-
-      {mode === "login" ? (
-        <>
-          <h3>Login</h3>
-          <input
-            type="email"
-            placeholder="Email"
-            value={loginForm.email}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, email: e.target.value })
-            }
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={loginForm.password}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, password: e.target.value })
-            }
-          />
-          <button className="primary-btn" onClick={handleLogin} disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </>
-      ) : (
-        <>
-          <h3>Register</h3>
-          <input
-            type="text"
-            placeholder="Name"
-            value={registerForm.name}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, name: e.target.value })
-            }
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={registerForm.email}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, email: e.target.value })
-            }
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={registerForm.password}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, password: e.target.value })
-            }
-          />
-          <button className="success-btn" onClick={handleRegister} disabled={loading}>
-            {loading ? "Registering..." : "Register"}
-          </button>
-        </>
-      )}
-
-      <p className="status-text">{message}</p>
     </div>
   );
 }

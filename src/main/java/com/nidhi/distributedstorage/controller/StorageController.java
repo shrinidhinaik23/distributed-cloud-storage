@@ -118,4 +118,38 @@ public class StorageController {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("Delete failed: " + filename);
     }
+    @GetMapping("/preview/{filename}")
+    public ResponseEntity<Resource> previewFile(@PathVariable String filename) {
+        try {
+            File file = new File(getStorageDir(), filename);
+
+            if (!file.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Path path = file.toPath();
+            Resource resource = new UrlResource(path.toUri());
+
+            String contentType = java.nio.file.Files.probeContentType(path);
+            MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+
+            if (contentType != null) {
+                try {
+                    mediaType = MediaType.parseMediaType(contentType);
+                } catch (Exception ignored) {
+                }
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(mediaType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + resource.getFilename() + "\"")
+                    .body(resource);
+
+        } catch (MalformedURLException e) {
+            return ResponseEntity.internalServerError().build();
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }

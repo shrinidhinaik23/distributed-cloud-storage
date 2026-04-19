@@ -1,139 +1,152 @@
-import { useEffect, useState } from "react";
-import { Download, Trash2, RefreshCcw } from "lucide-react";
+import {
+  Download,
+  Trash2,
+  Eye,
+  FileText,
+  FileImage,
+  FileArchive,
+  FileCode2,
+} from "lucide-react";
 import api from "../services/api";
 
-export default function FileTable({ refreshKey }) {
-  const [files, setFiles] = useState([]);
-  const [message, setMessage] = useState("Loading files...");
-
-  const loadFiles = async () => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      setFiles([]);
-      setMessage("Please login to view your files");
-      return;
-    }
-
-    try {
-      const res = await api.get("/master/files/my");
-      const data = Array.isArray(res.data) ? res.data : [];
-      setFiles(data);
-      setMessage(data.length === 0 ? "No files found" : "");
-    } catch (error) {
-      setFiles([]);
-      setMessage(
-        error?.response?.data?.message ||
-          error?.response?.data ||
-          "Failed to load files"
-      );
-    }
-  };
-
-  useEffect(() => {
-    loadFiles();
-  }, [refreshKey]);
-
-  const handleDelete = async (fileName) => {
-    if (!window.confirm(`Delete ${fileName}?`)) return;
-
-    try {
-      await api.delete(`/master/delete/${encodeURIComponent(fileName)}`);
-      setMessage(`Deleted ${fileName}`);
-      loadFiles();
-    } catch (error) {
-      setMessage(
-        error?.response?.data?.message ||
-          error?.response?.data ||
-          "Delete failed"
-      );
-    }
-  };
-
+export default function FileTable({ files, onDeleted, onPreview, showToast }) {
   const handleDownload = async (fileName) => {
     try {
-      const res = await api.get(`/master/download/${encodeURIComponent(fileName)}`, {
-        responseType: "blob",
-      });
+      const response = await api.get(
+        `/master/download/${encodeURIComponent(fileName)}`,
+        { responseType: "blob" }
+      );
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+
       const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
 
-      setMessage(`Downloaded ${fileName}`);
-    } catch {
-      setMessage("Download failed");
+      window.URL.revokeObjectURL(url);
+      showToast?.("File downloaded successfully", "success");
+    } catch (error) {
+      console.error(error);
+      showToast?.("Download failed", "error");
+    }
+  };
+
+  const handleDelete = async (fileName) => {
+    try {
+      await api.delete(`/master/delete/${encodeURIComponent(fileName)}`);
+      onDeleted();
+      showToast?.("File deleted successfully", "success");
+    } catch (error) {
+      console.error(error);
+      showToast?.("Delete failed", "error");
     }
   };
 
   return (
-    <section className="table-panel">
-      <div className="section-header">
-        <h3>My Files</h3>
-        <button className="icon-action-btn" onClick={loadFiles}>
-          <RefreshCcw size={16} />
-          Refresh
-        </button>
-      </div>
+    <div className="file-table-wrap">
+      <table className="file-table premium-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Nodes</th>
+            <th>Mode</th>
+            <th>Uploaded</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
 
-      <div className="table-wrap">
-        <table>
-          <thead>
+        <tbody>
+          {files.length === 0 ? (
             <tr>
-              <th>File Name</th>
-              <th>Node</th>
-              <th>Status</th>
-              <th>Mode</th>
-              <th>User</th>
-              <th>Upload Time</th>
-              <th>Actions</th>
+              <td colSpan="5" className="empty-cell">
+                No files found
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {files.length > 0 ? (
-              files.map((file) => (
-                <tr key={file.id}>
-                  <td>{file.fileName}</td>
-                  <td>{file.nodePort}</td>
-                  <td>{file.status}</td>
-                  <td>{file.mode}</td>
-                  <td>{file.userEmail}</td>
-                  <td>{file.uploadTime}</td>
-                  <td>
-                    <div className="action-row">
-                      <button
-                        className="mini-btn"
-                        onClick={() => handleDownload(file.fileName)}
-                      >
-                        <Download size={15} />
-                      </button>
-                      <button
-                        className="mini-btn danger-outline"
-                        onClick={() => handleDelete(file.fileName)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+          ) : (
+            files.map((file, index) => (
+              <tr key={`${file.fileName}-${index}`}>
+                <td>
+                  <div className="file-name rich-file-name">
+                    <div className="file-icon-shell">{getFileIcon(file.fileName)}</div>
+                    <div className="file-meta">
+                      <span className="file-title">{file.fileName}</span>
+                      <span className="file-subtitle">
+                        {file.nodes.length} node{file.nodes.length > 1 ? "s" : ""}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="7" className="empty-cell">
-                  {message}
+                  </div>
+                </td>
+
+                <td>
+                  {file.nodes.map((n) => (
+                    <span key={n} className="node-chip">
+                      {n}
+                    </span>
+                  ))}
+                </td>
+
+                <td>
+                  <span className="mode-badge">
+                    {file.mode === "load_balancing" ? "Load balancing" : "Replication"}
+                  </span>
+                </td>
+
+                <td>{formatDate(file.uploadTime)}</td>
+
+                <td>
+                  <div className="table-actions">
+                    <button
+                      className="table-btn"
+                      onClick={() => onPreview(file.fileName)}
+                      type="button"
+                      title="Preview"
+                    >
+                      <Eye size={16} />
+                    </button>
+
+                    <button
+                      className="table-btn"
+                      onClick={() => handleDownload(file.fileName)}
+                      type="button"
+                      title="Download"
+                    >
+                      <Download size={16} />
+                    </button>
+
+                    <button
+                      className="table-btn danger"
+                      onClick={() => handleDelete(file.fileName)}
+                      type="button"
+                      title="Delete"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {message && files.length > 0 && <p className="status-text">{message}</p>}
-    </section>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return date.toLocaleString();
+}
+
+function getFileIcon(fileName) {
+  const lower = fileName.toLowerCase();
+
+  if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(lower)) return <FileImage size={18} />;
+  if (/\.(zip|rar|7z)$/.test(lower)) return <FileArchive size={18} />;
+  if (/\.(js|jsx|java|py|html|css|json|ts|tsx)$/.test(lower)) return <FileCode2 size={18} />;
+  return <FileText size={18} />;
 }

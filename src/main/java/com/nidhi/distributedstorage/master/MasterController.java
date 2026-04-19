@@ -349,4 +349,68 @@ public class MasterController {
 
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
     }
+    @GetMapping("/preview/{filename}")
+    public ResponseEntity<ByteArrayResource> previewFromAvailableNode(
+            @PathVariable String filename,
+            Authentication authentication
+    ) {
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+        String userEmail = authentication.getName();
+
+        List<FileMetadata> metadataList = fileMetadataRepository.findByUserEmail(userEmail).stream()
+                .filter(f -> filename.equals(f.getFileName()) && "UPLOADED".equals(f.getStatus()))
+                .toList();
+
+        if (metadataList.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        Set<Integer> candidatePorts = new LinkedHashSet<>();
+        for (FileMetadata metadata : metadataList) {
+            candidatePorts.add(metadata.getNodePort());
+        }
+
+        for (Integer port : candidatePorts) {
+            try {
+                String previewUrl = "http://localhost:" + port + "/storage/preview/" + filename;
+
+                ResponseEntity<byte[]> response = restTemplate.exchange(
+                        previewUrl,
+                        HttpMethod.GET,
+                        null,
+                        byte[].class
+                );
+
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                    ByteArrayResource resource = new ByteArrayResource(response.getBody());
+
+                    MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+                    List<String> contentTypes = response.getHeaders().get(HttpHeaders.CONTENT_TYPE);
+
+                    if (contentTypes != null && !contentTypes.isEmpty()) {
+                        try {
+                            mediaType = MediaType.parseMediaType(contentTypes.get(0));
+                        } catch (Exception ignored) {
+                        }
+                    }
+
+                    return ResponseEntity.ok()
+                            .contentType(mediaType)
+                            .header(HttpHeaders.CONTENT_DISPOSITION,
+                                    "inline; filename=\"" + filename + "\"")
+                            .contentLength(response.getBody().length)
+                            .body(resource);
+                }
+
+            } catch (Exception e) {
+                System.out.println("Node " + port + " preview failed: " + e.getMessage());
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+    }
 }

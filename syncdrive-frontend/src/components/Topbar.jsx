@@ -1,9 +1,9 @@
-import { RefreshCw, LogOut, Search } from "lucide-react";
+import React from "react";
+import { RefreshCw, Search } from "lucide-react"; // 👈 Dropped LogOut icon import
 
 export default function Topbar({
   user,
   onRefresh,
-  onLogout,
   mode,
   setMode,
   title,
@@ -57,10 +57,7 @@ export default function Topbar({
           <span>Refresh</span>
         </button>
 
-        <button className="logout-btn" type="button" onClick={onLogout}>
-          <LogOut size={16} />
-          <span>Logout</span>
-        </button>
+        {/* ❌ Legay header logout button removed to keep sidebar as sole controller */}
       </div>
     </div>
   );

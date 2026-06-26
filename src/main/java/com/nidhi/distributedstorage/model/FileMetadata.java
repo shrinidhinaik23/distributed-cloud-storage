@@ -1,7 +1,6 @@
 package com.nidhi.distributedstorage.model;
 
 import jakarta.persistence.*;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -19,8 +18,7 @@ public class FileMetadata {
     private String userEmail;
     private LocalDateTime uploadTime;
 
-    public FileMetadata() {
-    }
+    public FileMetadata() {}
 
     public FileMetadata(String fileName, int nodePort, String status, String mode, String userEmail) {
         this.fileName = fileName;
@@ -31,59 +29,25 @@ public class FileMetadata {
         this.uploadTime = LocalDateTime.now();
     }
 
-    public Long getId() {
-        return id;
-    }
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public String getFileName() {
-        return fileName;
-    }
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
 
-    public int getNodePort() {
-        return nodePort;
-    }
+    public int getNodePort() { return nodePort; }
+    public void setNodePort(int nodePort) { this.nodePort = nodePort; }
 
-    public String getStatus() {
-        return status;
-    }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
-    public String getMode() {
-        return mode;
-    }
+    public String getMode() { return mode; }
+    public void setMode(String mode) { this.mode = mode; }
 
-    public String getUserEmail() {
-        return userEmail;
-    }
+    public String getUserEmail() { return userEmail; }
+    public void setUserEmail(String userEmail) { this.userEmail = userEmail; }
 
-    public LocalDateTime getUploadTime() {
-        return uploadTime;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public void setFileName(String fileName) {
-        this.fileName = fileName;
-    }
-
-    public void setNodePort(int nodePort) {
-        this.nodePort = nodePort;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public void setMode(String mode) {
-        this.mode = mode;
-    }
-
-    public void setUserEmail(String userEmail) {
-        this.userEmail = userEmail;
-    }
-
-    public void setUploadTime(LocalDateTime uploadTime) {
-        this.uploadTime = uploadTime;
-    }
+    public LocalDateTime getUploadTime() { return uploadTime; }
+    public void setUploadTime(LocalDateTime uploadTime) { this.uploadTime = uploadTime; }
 }

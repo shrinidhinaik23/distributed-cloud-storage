@@ -1,0 +1,24 @@
+:root {
+  /* Colors */
+  --bg-app: #f9fafb;
+  --bg-sidebar: #0f172a;
+  --bg-white: #ffffff;
+  --text-primary: #1f2937;
+  --text-secondary: #64748b;
+  
+  /* Gradients & Accents */
+  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  --accent-purple: #6366f1;
+  
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: 1px solid rgba(229, 231, 235, 0.5);
+  
+  /* Spacing & Radius */
+  --radius-lg: 20px;
+  --radius-md: 12px;
+  --shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  
+  /* Typography */
+  --font-main: 'Inter', -apple-system, sans-serif;
+}

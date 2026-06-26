@@ -43,3 +43,5 @@ storage-8082/
 
 .env
 application.properties
+
+src/main/resources/firebase-service-account.json

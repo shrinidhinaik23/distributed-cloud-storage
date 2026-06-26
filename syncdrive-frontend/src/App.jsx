@@ -1,51 +1,25 @@
-import { useEffect, useState } from "react";
-import AuthPanel from "./components/AuthPanel";
-import Dashboard from "./pages/Dashboard";
-import api from "./services/api";
-import "./index.css";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [booting, setBooting] = useState(true);
+function App() {
+  // Simple check for token presence
+  const isAuthenticated = !!localStorage.getItem("token");
 
-  useEffect(() => {
-    const init = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setBooting(false);
-        return;
-      }
-
-      try {
-        const response = await api.get("/user/me");
-        setUser(response.data);
-      } catch (error) {
-        localStorage.removeItem("token");
-        setUser(null);
-      } finally {
-        setBooting(false);
-      }
-    };
-
-    init();
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    setUser(null);
-  };
-
-  if (booting) {
-    return (
-      <div className="loading-screen">
-        <div className="loader-card">Loading...</div>
-      </div>
-    );
-  }
-
-  return user ? (
-    <Dashboard user={user} onLogout={handleLogout} />
-  ) : (
-    <AuthPanel onLogin={setUser} />
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route 
+          path="/dashboard" 
+          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} 
+        />
+        <Route path="*" element={<Navigate to="/login" />} />
+      </Routes>
+    </Router>
   );
 }
+
+export default App;

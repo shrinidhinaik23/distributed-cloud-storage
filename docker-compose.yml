@@ -1,0 +1,99 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: distributed_storage_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  storage1:
+    build: .
+    container_name: storage1
+    restart: on-failure
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/distributed_storage_db
+      DB_USER: root
+      DB_PASSWORD: root
+      PORT: 8080
+      SPRING_PROFILES_ACTIVE: storage
+
+  storage2:
+    build: .
+    container_name: storage2
+    restart: on-failure
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/distributed_storage_db
+      DB_USER: root
+      DB_PASSWORD: root
+      PORT: 8081
+      SPRING_PROFILES_ACTIVE: storage
+
+  storage3:
+    build: .
+    container_name: storage3
+    restart: on-failure
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/distributed_storage_db
+      DB_USER: root
+      DB_PASSWORD: root
+      PORT: 8082
+      SPRING_PROFILES_ACTIVE: storage
+
+  master:
+    build: .
+    container_name: master
+    restart: on-failure
+    depends_on:
+      mysql:
+        condition: service_healthy
+      storage1:
+        condition: service_started
+      storage2:
+        condition: service_started
+      storage3:
+        condition: service_started
+    ports:
+      - "9090:9090"
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/distributed_storage_db
+      DB_USER: root
+      DB_PASSWORD: root
+      PORT: 9090
+      SPRING_PROFILES_ACTIVE: master
+      STORAGE_NODES: http://storage1:8080,http://storage2:8081,http://storage3:8082
+
+  frontend:
+    build: ./syncdrive-frontend
+    container_name: frontend
+    depends_on:
+      - master
+    ports:
+      - "5173:5173"
+
+volumes:
+  mysql_data:

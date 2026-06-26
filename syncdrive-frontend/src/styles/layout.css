@@ -1,0 +1,17 @@
+@import './variables.css';
+
+.dashboard-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr; /* Fixed sidebar, fluid content */
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+.dashboard-main {
+  padding: 32px;
+  overflow-y: auto; /* Content area scrolls, sidebar stays fixed */
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}

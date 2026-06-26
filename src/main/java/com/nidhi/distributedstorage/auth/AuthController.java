@@ -2,10 +2,7 @@ package com.nidhi.distributedstorage.auth;
 
 import com.nidhi.distributedstorage.model.User;
 import com.nidhi.distributedstorage.repository.UserRepository;
-import com.nidhi.distributedstorage.security.JwtService;
-import org.springframework.http.*;
-import org.springframework.security.authentication.*;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -14,56 +11,32 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
-    private final AuthenticationManager authenticationManager;
 
-    public AuthController(UserRepository userRepository,
-                          PasswordEncoder passwordEncoder,
-                          JwtService jwtService,
-                          AuthenticationManager authenticationManager) {
+    public AuthController(UserRepository userRepository) {
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.authenticationManager = authenticationManager;
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            return ResponseEntity.badRequest()
-                    .body(new AuthResponse(null, "Email already registered"));
+    @PostMapping("/sync-user")
+    public ResponseEntity<?> syncFirebaseUser(@RequestBody SyncUserRequest request) {
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Email field cannot be null or blank");
         }
 
-        User user = new User(
-                request.getName(),
-                request.getEmail(),
-                passwordEncoder.encode(request.getPassword())
-        );
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseGet(() -> {
+                    User newUser = new User();
+                    newUser.setEmail(request.getEmail());
+                    newUser.setPassword("FIREBASE_EXTERNAL_AUTH");
+                    return newUser;
+                });
+
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            user.setName(request.getName());
+        } else if (user.getName() == null) {
+            user.setName(request.getEmail().split("@")[0]);
+        }
 
         userRepository.save(user);
-
-        String token = jwtService.generateToken(user.getEmail());
-
-        return ResponseEntity.ok(new AuthResponse(token, "User registered successfully"));
-    }
-
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            request.getEmail(),
-                            request.getPassword()
-                    )
-            );
-
-            String token = jwtService.generateToken(request.getEmail());
-            return ResponseEntity.ok(new AuthResponse(token, "Login successful"));
-
-        } catch (BadCredentialsException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new AuthResponse(null, "Invalid email or password"));
-        }
+        return ResponseEntity.ok("User metadata synchronized successfully");
     }
 }
